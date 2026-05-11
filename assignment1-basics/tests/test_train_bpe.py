@@ -1,5 +1,6 @@
 import json
 import time
+import pytest
 
 from .adapters import run_train_bpe
 from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
@@ -21,7 +22,7 @@ def test_train_bpe_speed():
         special_tokens=["<|endoftext|>"],
     )
     end_time = time.time()
-    assert end_time - start_time < 1.5
+    assert end_time - start_time < 1.5, f"time took {end_time-start_time}"
 
 
 def test_train_bpe():

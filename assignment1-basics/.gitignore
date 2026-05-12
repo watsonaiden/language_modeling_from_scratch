@@ -1,5 +1,7 @@
 # data
 data/
+*.svg
+*.txt
 
 # workbenching
 *.ipynb

@@ -8,9 +8,11 @@ from multiprocessing import cpu_count, Pipe, Process
 
 from cs336_basics.bpe_subprocess import DIFF_COMMAND, STOP_COMMAND, BytePair, train_bpe_subprocess
 
+
 class BPEStats(BaseModel):
     merges: list[tuple[bytes, bytes]]
     vocab: dict[int, bytes]  # token num to bytes
+
 
 def find_chunk_boundaries(
     file: BinaryIO,
@@ -60,10 +62,9 @@ def find_chunk_boundaries(
 
 
 def train_bpe_master(file_path: str, vocab_size: int, special_tokens: list[str]) -> BPEStats:
-    with open(file_path, 'rb') as f_stream:
+    with open(file_path, "rb") as f_stream:
         chunk_boundaries = find_chunk_boundaries(f_stream, cpu_count(), special_tokens[0].encode())
-    
-    
+
     subprocesses = []
     pipes = []
 
@@ -74,10 +75,8 @@ def train_bpe_master(file_path: str, vocab_size: int, special_tokens: list[str])
         process.start()
         subprocesses.append(process)
 
-
     vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # token# -> byte value
-    merges : list[BytePair] = []
-    
+    merges: list[BytePair] = []
 
     num_merges = vocab_size - len(vocab) - len(special_tokens)
     merged_stats = defaultdict(int)
@@ -89,7 +88,7 @@ def train_bpe_master(file_path: str, vocab_size: int, special_tokens: list[str])
             stats = pipe.recv()
             for k, v in stats.items():
                 merged_stats[k] += v
-        
+
         most_common_pair = max(merged_stats.items(), key=lambda x: (x[1], vocab.get(x[0][0]), vocab.get(x[0][1])))[0]
 
         token1, token2 = most_common_pair
@@ -99,11 +98,11 @@ def train_bpe_master(file_path: str, vocab_size: int, special_tokens: list[str])
         vocab[new_token] = vocab[token1] + vocab[token2]
 
         for pipe in pipes:
-            pipe.send((DIFF_COMMAND,most_common_pair, new_token))
+            pipe.send((DIFF_COMMAND, most_common_pair, new_token))
 
     for special_token in special_tokens:
         vocab[len(vocab)] = special_token.encode()
-    
+
     for pipe in pipes:
         # read leftover results which cleans the pipe
         while pipe.poll():
@@ -117,8 +116,7 @@ def train_bpe_master(file_path: str, vocab_size: int, special_tokens: list[str])
     return BPEStats(merges=merges, vocab=vocab)
 
 
-
-if __name__ == '__main__':
-    print(train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/cs336_basics/simple_file.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
-    #train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt', 500, special_tokens=['<|endoftext|>'])
-    #train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt', 10_000, special_tokens=['<|endoftext|>'])
+if __name__ == "__main__":
+    # print(train_bpe_master('data/simple_file.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
+    # train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt', 500, special_tokens=['<|endoftext|>'])
+    train_bpe_master("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])

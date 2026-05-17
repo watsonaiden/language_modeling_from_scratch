@@ -2,6 +2,7 @@
 data/
 *.svg
 *.txt
+*.html
 
 # workbenching
 *.ipynb

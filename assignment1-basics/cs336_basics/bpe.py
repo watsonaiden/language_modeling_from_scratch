@@ -1,17 +1,60 @@
 import os
 from pydantic import BaseModel
-from typing import BinaryIO
-from collections import defaultdict
+from typing import BinaryIO, NamedTuple
+from collections import defaultdict, Counter
 from tqdm import tqdm
 
-from multiprocessing import cpu_count, Pipe, Process
+from multiprocessing import cpu_count, Pool
 
-from cs336_basics.bpe_subprocess import DIFF_COMMAND, STOP_COMMAND, BytePair, train_bpe_subprocess
+from cs336_basics.pre_tokenize import PretokenizeInputs, subprocess_pre_tokenize_chunk
 
 
 class BPEStats(BaseModel):
     merges: list[tuple[bytes, bytes]]
     vocab: dict[int, bytes]  # token num to bytes
+
+
+class BytePair(NamedTuple):
+    # represent the paired bytes
+    first_byte: int
+    second_byte: int
+
+
+class PretokenDuplicates(NamedTuple):
+    tokens: list
+    occurences: int
+
+
+class IndexData:
+    def __init__(self):
+        # byte_pair : {index: num_occurences}
+        self.indexs = defaultdict(dict)
+
+    def get_indexs(self, pair: BytePair) -> list[int]:
+        return self.indexs.get(pair, {}).keys()
+
+    def remove_occurence(self, pair: BytePair, index):
+        index_data = self.indexs[pair]
+
+        if index not in index_data:
+            return
+
+        # would not longer exist after deleting
+        if self.indexs[pair][index] == 1:
+            self.indexs[pair].pop(index)
+            return
+
+        self.indexs[pair][index] -= 1
+
+    def add_pair(self, pair: BytePair, index: int):
+        index_data = self.indexs[pair]
+        if index not in index_data:
+            index_data[index] = 1
+        else:
+            index_data[index] += 1
+
+    def remove_index(self, pair: BytePair):
+        self.indexs.pop(pair)
 
 
 def find_chunk_boundaries(
@@ -61,62 +104,106 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def train_bpe_master(file_path: str, vocab_size: int, special_tokens: list[str]) -> BPEStats:
+# return bytePair -> count mapping and bytePair -> segment index locations
+def init_stats(pretokens: list[PretokenDuplicates]) -> tuple[dict[BytePair, int], IndexData]:
+    stats = defaultdict(int)
+    indexs = IndexData()
+
+    for seg_ind, (segment, count) in enumerate(pretokens):
+        for first, second in zip(segment, segment[1:]):
+            byte_pair = BytePair(first, second)
+            stats[byte_pair] += 1 * count
+            indexs.add_pair(byte_pair, seg_ind)
+
+    return stats, indexs
+
+
+def apply_merges(merge_pair: BytePair, new_token: int, index_data: IndexData, pretokens: list[PretokenDuplicates]):
+    merged_pair_indexs = index_data.get_indexs(merge_pair)
+    diff = defaultdict(int)
+    for segment_index in merged_pair_indexs:
+        segment_tokens, count = pretokens[segment_index]
+        ind = 0
+
+        while ind < len(segment_tokens) - 1:
+            if tuple(segment_tokens[ind : ind + 2]) == merge_pair:
+                segment_tokens[ind : ind + 2] = [new_token]
+                diff[merge_pair] -= 1 * count
+
+                # ensure one token infront of pair
+                if ind > 0:
+                    old_pair = BytePair(segment_tokens[ind - 1], merge_pair[0])
+                    diff[old_pair] -= 1 * count
+                    index_data.remove_occurence(old_pair, segment_index)
+
+                    new_pair = BytePair(segment_tokens[ind - 1], new_token)
+                    diff[new_pair] += 1 * count
+                    index_data.add_pair(new_pair, segment_index)
+
+                # no element behind our replacement if we are at last index
+                if ind < len(segment_tokens) - 1:
+                    old_pair = BytePair(merge_pair[1], segment_tokens[ind + 1])
+                    diff[old_pair] -= 1 * count
+                    index_data.remove_occurence(old_pair, segment_index)
+
+                    new_pair = BytePair(new_token, segment_tokens[ind + 1])
+                    diff[new_pair] += 1 * count
+                    index_data.add_pair(new_pair, segment_index)
+
+            ind += 1
+
+    index_data.remove_index(merge_pair)
+
+    return diff
+
+
+def train_bpe(file_path: str, vocab_size: int, special_tokens: list[str]) -> BPEStats:
     with open(file_path, "rb") as f_stream:
         chunk_boundaries = find_chunk_boundaries(f_stream, cpu_count(), special_tokens[0].encode())
 
-    subprocesses = []
-    pipes = []
+    args = [
+        PretokenizeInputs(file_path, boundary[0], boundary[1], special_tokens)
+        for boundary in zip(chunk_boundaries, chunk_boundaries[1:])
+    ]
 
-    for start, end in zip(chunk_boundaries, chunk_boundaries[1:]):
-        parent_side, child_side = Pipe()
-        pipes.append(parent_side)
-        process = Process(target=train_bpe_subprocess, args=(file_path, start, end, special_tokens, child_side))
-        process.start()
-        subprocesses.append(process)
+    pretokens_with_counts = Counter()
+    with Pool(cpu_count()) as p:
+        for pretokens in p.imap_unordered(subprocess_pre_tokenize_chunk, args):
+            pretokens_with_counts.update(pretokens)
+
+    # convert to list for easier indexing and mutation of key after merges
+    pretokens = [PretokenDuplicates(list(k), v) for k, v in pretokens_with_counts.items()]
+    del pretokens_with_counts
+
+    stats, index_data = init_stats(pretokens)
 
     vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # token# -> byte value
     merges: list[BytePair] = []
 
     num_merges = vocab_size - len(vocab) - len(special_tokens)
-    merged_stats = defaultdict(int)
 
     for _ in tqdm(range(num_merges)):
-        # each subprocess calculates stats on their chunk
-        # first one gets the full stat chunk but every iteration after first should just get the diff
-        for pipe in pipes:
-            stats = pipe.recv()
-            for k, v in stats.items():
-                merged_stats[k] += v
-
-        most_common_pair = max(merged_stats.items(), key=lambda x: (x[1], vocab.get(x[0][0]), vocab.get(x[0][1])))[0]
-
+        most_common_pair = max(stats.items(), key=lambda x: (x[1], vocab.get(x[0][0]), vocab.get(x[0][1])))[0]
         token1, token2 = most_common_pair
 
         new_token = len(vocab)
         merges.append((vocab[token1], vocab[token2]))
         vocab[new_token] = vocab[token1] + vocab[token2]
 
-        for pipe in pipes:
-            pipe.send((DIFF_COMMAND, most_common_pair, new_token))
+        merge_diffs = apply_merges(most_common_pair, new_token, index_data, pretokens)
+        for pair, change in merge_diffs.items():
+            stats[pair] += change
+            if stats[pair] <= 0:
+                del stats[pair]
 
     for special_token in special_tokens:
         vocab[len(vocab)] = special_token.encode()
-
-    for pipe in pipes:
-        # read leftover results which cleans the pipe
-        while pipe.poll():
-            pipe.recv()
-        pipe.send((STOP_COMMAND,))
-
-    # wait for all processes to close
-    for process in subprocesses:
-        process.join()
 
     return BPEStats(merges=merges, vocab=vocab)
 
 
 if __name__ == "__main__":
-    # print(train_bpe_master('data/simple_file.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
+    # print(train_bpe('data/simple_file.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
+    # print(train_bpe('data/based_example.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
     # train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt', 500, special_tokens=['<|endoftext|>'])
-    train_bpe_master("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])
+    train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])

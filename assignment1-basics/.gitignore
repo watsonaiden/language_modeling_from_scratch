@@ -3,6 +3,7 @@ data/
 *.svg
 *.txt
 *.html
+*.bin
 
 # workbenching
 *.ipynb

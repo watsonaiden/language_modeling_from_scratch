@@ -38,3 +38,10 @@ This code does not take into account multiple byte sequences such as 'あ'(b'\xe
 
 ### (c) Give a two-byte sequence that does not decode to any Unicode character(s).
 '\xe0\x80'. Uses leading bits indicating a 3 byte sequence but is only 2 bytes.
+
+
+
+## Problem (train_bpe_tinystories):  BPE Training on TinyStories 
+a) Runtime is roughly 38 seconds on mac m1 chip. Peak memory is ~9GB (~900MB per process * 10 process) during pre-tokenization but ~71MB during main merge steps. longest token is b' responsibility'. 
+
+b) The most expensive process is by the far the pretokenization step utilizing regex. This process takes ~35 of the 38 seconds of runtime. This includes the multiprocessing operations and setup which seem to be necessary evils.

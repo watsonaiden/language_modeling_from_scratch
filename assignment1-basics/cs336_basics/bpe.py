@@ -8,6 +8,8 @@ from multiprocessing import cpu_count, Pool
 
 from cs336_basics.pre_tokenize import PretokenizeInputs, subprocess_pre_tokenize_chunk
 
+import heapq
+
 
 class BPEStats(BaseModel):
     merges: list[tuple[bytes, bytes]]
@@ -20,6 +22,7 @@ class BytePair(NamedTuple):
     second_byte: int
 
 
+# avoids duplicates by counting the number of occurences
 class PretokenDuplicates(NamedTuple):
     tokens: list
     occurences: int
@@ -55,6 +58,27 @@ class IndexData:
 
     def remove_index(self, pair: BytePair):
         self.indexs.pop(pair)
+
+
+class TokenComparison:
+    def __init__(self, count, bytes1, bytes2):
+        self.count = count
+        self.byte1 = bytes1
+        self.byte2 = bytes2
+
+    # treat like __gt__ to invert structure for max Heap
+    def __lt__(self, o: "TokenComparison"):
+        if self.count == o.count:
+            if self.byte1 == o.byte1:
+                return self.byte2 >= o.byte2
+            return self.byte1 >= o.byte1
+        return self.count >= o.count
+
+    def __eq__(self, o: "TokenComparison"):
+        return (self.count == o.count) and (self.byte1 == o.byte1) and (self.byte2 == o.byte2)
+
+    def __repr__(self):
+        return f"TokenComparison({self.byte1}+{self.byte2} = {self.count})"
 
 
 def find_chunk_boundaries(
@@ -174,16 +198,31 @@ def train_bpe(file_path: str, vocab_size: int, special_tokens: list[str]) -> BPE
     # convert to list for easier indexing and mutation of key after merges
     pretokens = [PretokenDuplicates(list(k), v) for k, v in pretokens_with_counts.items()]
     del pretokens_with_counts
+    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # token# -> byte value
+    merges: list[BytePair] = []
 
     stats, index_data = init_stats(pretokens)
 
-    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # token# -> byte value
-    merges: list[BytePair] = []
+    # heap to avoid reoccuring max calculations
+    # need to use custom construct since max heap does not exist easily in py3.12 introduced in 3.14
+    # TokenComparison inverts so if > it will say < and vice versa which will mean min in heap is actually max
+    stats_heap = [(TokenComparison(v, vocab.get(k[0]), vocab.get(k[1])), k) for k, v in stats.items()]
+    heapq.heapify(stats_heap)
 
     num_merges = vocab_size - len(vocab) - len(special_tokens)
 
     for _ in tqdm(range(num_merges)):
-        most_common_pair = max(stats.items(), key=lambda x: (x[1], vocab.get(x[0][0]), vocab.get(x[0][1])))[0]
+        most_common_pair = None
+        while not most_common_pair:
+            top_pair = heapq.heappop(stats_heap)
+            # validate if pair is stale
+            # since we do not clean the heap there may be stale entries if a pairs count was decremented.
+            # if stats is not equal this entry is old and there is more up to date entry in the heap
+            if top_pair[0].count != stats[top_pair[1]]:
+                continue
+
+            most_common_pair = top_pair[1]
+
         token1, token2 = most_common_pair
 
         new_token = len(vocab)
@@ -196,6 +235,9 @@ def train_bpe(file_path: str, vocab_size: int, special_tokens: list[str]) -> BPE
             if stats[pair] <= 0:
                 del stats[pair]
 
+            else:
+                heapq.heappush(stats_heap, (TokenComparison(stats[pair], vocab.get(pair[0]), vocab.get(pair[1])), pair))
+
     for special_token in special_tokens:
         vocab[len(vocab)] = special_token.encode()
 
@@ -206,4 +248,6 @@ if __name__ == "__main__":
     # print(train_bpe('data/simple_file.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
     # print(train_bpe('data/based_example.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
     # train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt', 500, special_tokens=['<|endoftext|>'])
-    train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])
+    bpe = train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])
+    print("longest token", max((len(word), word) for word in bpe.vocab.values()))
+    print("last token", max(bpe.vocab.items()))

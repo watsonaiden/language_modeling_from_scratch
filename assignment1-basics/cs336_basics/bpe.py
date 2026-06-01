@@ -249,5 +249,7 @@ if __name__ == "__main__":
     # print(train_bpe('data/based_example.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
     # train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt', 500, special_tokens=['<|endoftext|>'])
     bpe = train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])
-    print("longest token", max((len(word), word) for word in bpe.vocab.values()))
-    print("last token", max(bpe.vocab.items()))
+    import pickle
+
+    with open("data/tiny_stories_vocab.pkl", "wb") as f:
+        pickle.dump(bpe, f)

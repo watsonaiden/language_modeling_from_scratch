@@ -42,6 +42,13 @@ This code does not take into account multiple byte sequences such as 'あ'(b'\xe
 
 
 ## Problem (train_bpe_tinystories):  BPE Training on TinyStories 
-a) Runtime is roughly 38 seconds on mac m1 chip. Peak memory is ~9GB (~900MB per process * 10 process) during pre-tokenization but ~71MB during main merge steps. longest token is b' responsibility'. 
+a) Runtime is roughly 38 seconds on mac m1 chip. Peak memory is ~9GB (~900MB per process * 10 process) during pre-tokenization but ~71MB during main merge steps. longest token is 15 bytes which has 3 matches ['b accomplishment', b' disappointment',b' responsibility'].
 
 b) The most expensive process is by the far the pretokenization step utilizing regex. This process takes ~35 of the 38 seconds of runtime. This includes the multiprocessing operations and setup which seem to be necessary evils.
+
+
+## Problem (train_bpe_expts_owt):  BPE Training on OpenWebText
+
+runtie uv run cs336_basics/bpe.py  3834.06s user 51.83s system 777% cpu 8:20.00 total Longest token is a tie between(64, b'\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82') and b'----------------------------------------------------------------'
+
+The repeating dashes is somewhat reasonable the other is suprising. Further investigation seems to show this is a incorrectly encoded and re-encoded junk string sometimes called [mojibake](https://en.wikipedia.org/wiki/Mojibake) 

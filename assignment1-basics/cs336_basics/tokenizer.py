@@ -3,6 +3,7 @@ import regex as re
 from typing import Iterable, Iterator
 
 from cs336_basics.pre_tokenize import PAT
+from cs336_basics.bpe import BPEStats
 
 
 class Tokenizer:
@@ -16,7 +17,9 @@ class Tokenizer:
         self.merges = merges
 
     @classmethod
-    def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None): ...
+    def from_files(cls, merges_file_path, vocab_file_path, special_tokens=None):
+        bpe = BPEStats.from_files(merges_file_path, vocab_file_path)
+        return cls(bpe.vocab, bpe.merges, special_tokens=special_tokens)
 
     def regex_split(self, text: str) -> Iterator[str]:
         if self.special_tokens:

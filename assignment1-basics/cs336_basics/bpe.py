@@ -1,4 +1,8 @@
+import json
 import os
+import base64
+
+
 from pydantic import BaseModel
 from typing import BinaryIO, NamedTuple
 from collections import defaultdict, Counter
@@ -14,6 +18,30 @@ import heapq
 class BPEStats(BaseModel):
     merges: list[tuple[bytes, bytes]]
     vocab: dict[int, bytes]  # token num to bytes
+
+    def dump_to_files(self, merges_file_name: str, vocab_file_name: str):
+        with open(merges_file_name, "w") as fp:
+            for merge in self.merges:
+                # pairs using space as delimeter as b64 does not use spaces
+                fp.write(base64.b64encode(merge[0]).decode() + " " + base64.b64encode(merge[1]).decode() + "\n")
+
+        with open(vocab_file_name, "w") as fp:
+            json_safe = {k: base64.b64encode(v).decode() for k, v in self.vocab.items()}
+            json.dump(json_safe, fp)
+
+    @classmethod
+    def from_files(cls, merges_file_name: str, vocab_file_name: str):
+        merges = []
+        with open(merges_file_name, "r") as fp:
+            for line in fp:
+                first, second = line.split()
+                merges.append((base64.b64decode(first), base64.b64decode(second)))
+
+        with open(vocab_file_name, "r") as fp:
+            data = json.load(fp)
+            vocab = {k: base64.b64decode(v) for k, v in data.items()}
+
+        return cls(merges=merges, vocab=vocab)
 
 
 class BytePair(NamedTuple):
@@ -249,7 +277,5 @@ if __name__ == "__main__":
     # print(train_bpe('data/based_example.txt', 256+1+6, special_tokens=['<|endofsentence|>']).merges)
     # train_bpe_master('/Users/awatsy/projects/language_modeling_from_scratch/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt', 500, special_tokens=['<|endoftext|>'])
     bpe = train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10_000, special_tokens=["<|endoftext|>"])
-    import pickle
 
-    with open("data/tiny_stories_vocab.pkl", "wb") as f:
-        pickle.dump(bpe, f)
+    bpe.dump_to_files("data/tiny_stories_merges.txt", "data/tiny_stories_vocab.json")

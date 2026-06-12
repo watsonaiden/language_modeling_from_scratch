@@ -1,9 +1,11 @@
 # data
 data/
+.kiro
 *.svg
 *.txt
 *.html
 *.bin
+
 
 # workbenching
 *.ipynb

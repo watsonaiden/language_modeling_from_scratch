@@ -1,4 +1,5 @@
 from collections import defaultdict
+from functools import lru_cache
 import heapq
 import regex as re
 
@@ -46,12 +47,14 @@ class Tokenizer:
         self.merges = merges
         self.merges_priority = {merge: count for count, merge in enumerate(merges)}
 
+        self._tokenize_single_pre_token = lru_cache(maxsize=2048)(self._tokenize_single_pre_token)
+
     @classmethod
     def from_files(cls, merges_file_path, vocab_file_path, special_tokens=None):
         bpe = BPEStats.from_files(merges_file_path, vocab_file_path)
         return cls(bpe.vocab, bpe.merges, special_tokens=special_tokens)
 
-    def regex_split(self, text: str) -> Iterator[str]:
+    def regex_split(self, text: str) -> list[str]:
         if self.special_tokens:
             splits = re.splititer(
                 f"({'|'.join(f'{re.escape(special_token)}' for special_token in self.special_tokens)})", text
@@ -59,14 +62,15 @@ class Tokenizer:
         else:
             splits = [text]
 
+        pre_tokens = []
         for split in splits:
             # don't want to further subtokenize these are a special case
             if split in self.special_tokens:
-                yield split
+                pre_tokens.append(split)
 
             else:
-                for match in re.finditer(PAT, split):
-                    yield match.group(0)
+                pre_tokens.extend(re.findall(PAT, split))
+        return pre_tokens
 
     def encode(self, text: str) -> list[int]:
         encodings = []
@@ -159,10 +163,10 @@ class Tokenizer:
         for part in iterable:
             split = self.regex_split(prev + part)
 
-            prev = next(split)
+            prev = split[0]
 
             # we can't outright get the final token from a generator so do a lagging processing
-            for data in split:
+            for data in split[1:]:
                 encoding.extend(self.encode(prev))
                 prev = data
 

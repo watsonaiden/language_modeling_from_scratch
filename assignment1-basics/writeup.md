@@ -52,3 +52,14 @@ b) The most expensive process is by the far the pretokenization step utilizing r
 runtie uv run cs336_basics/bpe.py  3834.06s user 51.83s system 777% cpu 8:20.00 total Longest token is a tie between(64, b'\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82') and b'----------------------------------------------------------------'
 
 The repeating dashes is somewhat reasonable the other is suprising. Further investigation seems to show this is a incorrectly encoded and re-encoded junk string sometimes called [mojibake](https://en.wikipedia.org/wiki/Mojibake) 
+
+
+## Problem (tokenize_experiments)
+
+a) using tiny stories and OWT on tiny stories results in a similar 4 bytes / token compression. 
+
+b) OWT has a better compression on the other dataset. On tiny_stories it has a 4 bytes / token compression very simlar to tiny stories own tokenizer. Tiny stories tokenizer on OWT suffers decreasing to ~3.2 bytes / token.
+
+c) Thoughtput is roughly 5 mb / s. For a 825GB dataset this would take ~165k seconds or ~46 hours
+
+d) uint16 (16 bit unsigned integer) works as we know the token values will be between 0-32,000 at most because of the vocab size. uint16 is the smallest data type capable of handling this range as it ranges from 0 - 65535

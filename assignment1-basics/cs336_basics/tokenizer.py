@@ -47,7 +47,11 @@ class Tokenizer:
         self.merges = merges
         self.merges_priority = {merge: count for count, merge in enumerate(merges)}
 
-        self._tokenize_single_pre_token = lru_cache(maxsize=2048)(self._tokenize_single_pre_token)
+        self._tokenize_single_pre_token = lru_cache(maxsize=None)(self._tokenize_single_pre_token)
+
+        self.special_token_split_pat = re.compile(
+            f"({'|'.join(f'{re.escape(special_token)}' for special_token in self.special_tokens)})"
+        )
 
     @classmethod
     def from_files(cls, merges_file_path, vocab_file_path, special_tokens=None):
@@ -56,9 +60,7 @@ class Tokenizer:
 
     def regex_split(self, text: str) -> list[str]:
         if self.special_tokens:
-            splits = re.splititer(
-                f"({'|'.join(f'{re.escape(special_token)}' for special_token in self.special_tokens)})", text
-            )
+            splits = re.splititer(self.special_token_split_pat, text)
         else:
             splits = [text]
 
@@ -144,7 +146,7 @@ class Tokenizer:
 
         return output
 
-    def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+    def encode_iterable(self, iterable: Iterable[str], batching_size=1e6) -> Iterator[int]:
         """
          cannot naively encode each str indepdentently as the final part could be split on a boundary
          for example imagine the file 'hi there \n\n\n llm's are cool'
@@ -160,21 +162,29 @@ class Tokenizer:
 
         encoding = []
 
-        for part in iterable:
-            split = self.regex_split(prev + part)
+        # small batches are expensive let's build a larger one
 
-            prev = split[0]
+        batched = []
+        total = 0
+        for text in iterable:
+            batched.append(text)
+            total += len(text)
 
-            # we can't outright get the final token from a generator so do a lagging processing
-            for data in split[1:]:
-                encoding.extend(self.encode(prev))
-                prev = data
+            if total >= batching_size:
+                batch = "".join(batched)
+                batched.clear()
+                total = 0
+
+                split = self.regex_split(prev + batch)
+                for s in split[: len(split) - 1]:
+                    yield from self._tokenize_single_pre_token(s)
+
+                prev = split[-1]
 
         # flush trailing buffer once iterable is done
-        if prev:
-            encoding.extend(self.encode(prev))
-
-        return encoding
+        if prev or batched:
+            for s in self.regex_split(prev + "".join(batched)):
+                yield from self._tokenize_single_pre_token(s)
 
     def decode(self, ids: list[int]) -> str:
         return b"".join(self.vocab[token] for token in ids).decode(errors="replace")

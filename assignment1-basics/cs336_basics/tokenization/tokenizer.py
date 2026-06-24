@@ -5,8 +5,8 @@ import regex as re
 
 from typing import Iterable, Iterator
 
-from cs336_basics.pre_tokenize import PAT
-from cs336_basics.bpe import BPEStats
+from cs336_basics.tokenization.pre_tokenize import PAT
+from cs336_basics.tokenization.bpe import BPEStats
 
 from dataclasses import dataclass
 

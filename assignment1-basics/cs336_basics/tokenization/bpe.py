@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from multiprocessing import cpu_count, Pool
 
-from cs336_basics.pre_tokenize import PretokenizeInputs, subprocess_pre_tokenize_chunk
+from cs336_basics.tokenization.pre_tokenize import PretokenizeInputs, subprocess_pre_tokenize_chunk
 
 import heapq
 

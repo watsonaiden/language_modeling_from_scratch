@@ -29,7 +29,13 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    raise NotImplementedError
+    from cs336_basics.modules import Linear
+
+    l = Linear(d_in, d_out)
+
+    l.load_state_dict({"weights": weights})
+
+    return l.forward(in_features)
 
 
 def run_embedding(
@@ -51,7 +57,13 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    from cs336_basics.modules import Embedding
+
+    e = Embedding(vocab_size, d_model)
+
+    e.load_state_dict({"embeddings": weights})
+
+    return e.forward(token_ids)
 
 
 def run_swiglu(
@@ -83,7 +95,14 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+
+    from cs336_basics.modules import SwiGLU
+
+    swiglu = SwiGLU(d_model, d_ff)
+
+    swiglu.load_state_dict({"w1.weights": w1_weight, "w2.weights": w2_weight, "w3.weights": w3_weight})
+
+    return swiglu.forward(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -104,7 +123,9 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    from cs336_basics.modules import attention
+
+    return attention(Q, K, V, mask)
 
 
 def run_multihead_self_attention(
@@ -200,7 +221,12 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+
+    from cs336_basics.modules import RoPE
+
+    rope = RoPE(theta, d_k, max_seq_len)
+
+    return rope.forward(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -378,7 +404,13 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import RMSNorm
+
+    norm = RMSNorm(d_model, eps)
+
+    norm.load_state_dict({"weights": weights})
+
+    return norm.forward(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -431,7 +463,10 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+
+    from cs336_basics.modules import softmax
+
+    return softmax(in_features, dim)
 
 
 def run_cross_entropy(

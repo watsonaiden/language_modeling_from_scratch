@@ -22,7 +22,7 @@ def run_linear(
     Args:
         in_dim (int): The size of the input dimension
         out_dim (int): The size of the output dimension
-        weights (Float[Tensor, "d_out d_in"]): The linear weights to use
+        weight (Float[Tensor, "d_out d_in"]): The linear weight to use
         in_features (Float[Tensor, "... d_in"]): The output tensor to apply the function to
 
     Returns:
@@ -33,7 +33,7 @@ def run_linear(
 
     l = Linear(d_in, d_out)
 
-    l.load_state_dict({"weights": weights})
+    l.load_state_dict({"weight": weights})
 
     return l.forward(in_features)
 
@@ -61,7 +61,7 @@ def run_embedding(
 
     e = Embedding(vocab_size, d_model)
 
-    e.load_state_dict({"embeddings": weights})
+    e.load_state_dict({"weight": weights})
 
     return e.forward(token_ids)
 
@@ -100,7 +100,7 @@ def run_swiglu(
 
     swiglu = SwiGLU(d_model, d_ff)
 
-    swiglu.load_state_dict({"w1.weights": w1_weight, "w2.weights": w2_weight, "w3.weights": w3_weight})
+    swiglu.load_state_dict({"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
 
     return swiglu.forward(in_features)
 
@@ -159,7 +159,18 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import MultiheadAttention
+
+    mha = MultiheadAttention(d_model, num_heads, 10_000, 100_000)
+
+    mha.load_state_dict(
+        {
+            "proj_qkv.weight": torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=0),
+            "output_proj.weight": o_proj_weight,
+        }
+    )
+
+    return mha.forward(in_features, torch.zeros(in_features.size(-2), dtype=torch.int))
 
 
 def run_multihead_self_attention_with_rope(
@@ -199,7 +210,18 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import MultiheadAttention
+
+    mha = MultiheadAttention(d_model, num_heads, theta, max_seq_len)
+
+    mha.load_state_dict(
+        {
+            "proj_qkv.weight": torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=0),
+            "output_proj.weight": o_proj_weight,
+        }
+    )
+
+    return mha.forward(in_features, token_positions)
 
 
 def run_rope(
@@ -299,7 +321,21 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import TransformerBlock
+
+    transformer_block = TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len)
+
+    states = {
+        "attn.proj_qkv.weight": torch.cat(
+            [weights.pop("attn.q_proj.weight"), weights.pop("attn.k_proj.weight"), weights.pop("attn.v_proj.weight")],
+            dim=0,
+        ),
+        **weights,
+    }
+
+    transformer_block.load_state_dict(states)
+
+    return transformer_block(in_features)
 
 
 def run_transformer_lm(
@@ -381,7 +417,26 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import TransformerLM
+
+    lm = TransformerLM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
+
+    state_dict = {
+        f"layers.{layer_num}.attn.proj_qkv.weight": torch.cat(
+            [
+                weights.pop(f"layers.{layer_num}.attn.q_proj.weight"),
+                weights.pop(f"layers.{layer_num}.attn.k_proj.weight"),
+                weights.pop(f"layers.{layer_num}.attn.v_proj.weight"),
+            ],
+            dim=0,
+        )
+        for layer_num in range(num_layers)
+    }
+    state_dict.update(weights)
+
+    lm.load_state_dict(state_dict)
+
+    return lm(in_indices)
 
 
 def run_rmsnorm(
@@ -408,7 +463,7 @@ def run_rmsnorm(
 
     norm = RMSNorm(d_model, eps)
 
-    norm.load_state_dict({"weights": weights})
+    norm.load_state_dict({"weight": weights})
 
     return norm.forward(in_features)
 

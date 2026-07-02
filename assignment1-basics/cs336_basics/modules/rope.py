@@ -14,8 +14,8 @@ class RoPE(nn.Module):
             "index, k -> index k",
         )
 
-        self.position_sin = nn.Buffer(torch.sin(angles))
-        self.position_cos = nn.Buffer(torch.cos(angles))
+        self.position_sin = nn.Buffer(torch.sin(angles), persistent=False)
+        self.position_cos = nn.Buffer(torch.cos(angles), persistent=False)
 
     def forward(self, x: torch.Tensor, token_position: torch.Tensor) -> torch.Tensor:
         """

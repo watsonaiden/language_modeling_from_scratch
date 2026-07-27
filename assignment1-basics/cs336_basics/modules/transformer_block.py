@@ -18,6 +18,6 @@ class TransformerBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         # input should be [... sequence_length d_model]
-        x += self.attn(self.ln1(x), torch.arange(x.size(-2)))
+        x = x + self.attn(self.ln1(x), torch.arange(x.size(-2)))
 
         return x + self.ffn(self.ln2(x))

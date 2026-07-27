@@ -5,6 +5,7 @@ data/
 *.txt
 *.html
 *.bin
+notebooks/
 
 
 # workbenching

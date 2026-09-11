@@ -161,7 +161,7 @@ def run_multihead_self_attention(
     """
     from cs336_basics.modules import MultiheadAttention
 
-    mha = MultiheadAttention(d_model, num_heads, 10_000, 100_000)
+    mha = MultiheadAttention(d_model, num_heads, 10_000, in_features.size(-2))
 
     mha.load_state_dict(
         {
@@ -557,7 +557,7 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
     """
     from cs336_basics.training import gradient_clipping
 
-    return gradient_clipping(parameters, max_l2_norm)
+    gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:

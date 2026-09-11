@@ -15,13 +15,8 @@ class RMSNorm(nn.Module):
         self.d_model = d_model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        in_dtype = x.dtype
-
-        x = x.to(torch.float32)
 
         rms = torch.sqrt((reduce(x**2, "... d -> ...", "mean") + self.eps))
         rms = rearrange(rms, "... -> ... 1")
 
-        result = (x / rms) * self.weight
-
-        return result.to(in_dtype)
+        return (x / rms) * self.weight

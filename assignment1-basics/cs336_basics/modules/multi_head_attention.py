@@ -20,6 +20,11 @@ class MultiheadAttention(nn.Module):
 
         self.rope = RoPE(theta=theta, d_k=d_model / num_heads, max_seq_len=max_seq_len)
 
+        # token at i can only attend to tokens j <= i
+        self.casual_mask = nn.Buffer(
+            torch.tril(torch.ones((max_seq_len, max_seq_len), dtype=torch.bool)), persistent=False
+        )
+
         self.num_heads = num_heads
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
@@ -27,13 +32,10 @@ class MultiheadAttention(nn.Module):
 
         qkv = rearrange(qkv, "... (three head d) -> three head ... d", three=3, head=self.num_heads)
 
-        # token at i can only attend to tokens j <= i
-        casual_mask = torch.tril(torch.ones((x.size(-2), x.size(-2)), dtype=torch.bool))
-
         rotated_query = self.rope(qkv[0], token_positions)
         rotated_key = self.rope(qkv[1], token_positions)
 
-        out = attention(rotated_query, rotated_key, qkv[2], mask=casual_mask)
+        out = attention(rotated_query, rotated_key, qkv[2], mask=self.casual_mask)
 
         heads_concat = rearrange(out, "heads ... d_k -> ... (heads d_k)")
 

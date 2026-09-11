@@ -90,20 +90,14 @@ def lr_cosine_schedule(t, lr_max, lr_min, warmup_steps, annealing_steps):
 @torch.no_grad()
 def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, eps=1e-6):
 
-    rolling_l2 = 0
+    grads = torch.cat([p.grad.flatten() for p in parameters if p.grad is not None])
+
+    rolling_l2 = torch.sqrt(torch.square(grads).sum())
+
+    scale_factor = max_l2_norm / (rolling_l2 + eps)
+    # if clamp not needed then default to no-op mult by 1
+    scale_factor = torch.clamp(scale_factor, max=1)
 
     for p in parameters:
-        if p.grad is None:
-            continue
-        rolling_l2 += torch.square(p.grad).sum().item()
-
-    rolling_l2 = math.sqrt(rolling_l2)
-
-    if rolling_l2 >= max_l2_norm:
-        scale_factor = max_l2_norm / (rolling_l2 + eps)
-        for p in parameters:
-            if p.grad is None:
-                continue
+        if p.grad is not None:
             p.grad.mul_(scale_factor)
-
-    return parameters

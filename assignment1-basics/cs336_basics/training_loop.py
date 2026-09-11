@@ -29,14 +29,11 @@ def train(config_path: str):
     learning_steps = cfg.training.annealing_steps + cfg.training.warmup_steps
     print(f"estimated training tokens {cfg.model.context_length * learning_steps * cfg.batch_size:,}")
 
-
     if cfg.test_mode:
         print("In Testing Mode using only one mini-batch")
         batch_input, batch_exp_output = get_batch(
             data, batch_size=cfg.batch_size, context_length=cfg.model.context_length, device=cfg.device
         )
-
-
 
     for iter in tqdm(range(learning_steps)):
         # only regenerate if not in test mode
@@ -54,8 +51,8 @@ def train(config_path: str):
         # token_i_real
         loss = cross_entropy_loss(output.view(-1, output.size(-1)), batch_exp_output.view(-1))
         loss.backward()
-        print(f"loss @ {iter}: {loss.item()}")
-
+        if iter % 10 == 0:
+            print(f"loss {iter}: {loss.item()}")
         gradient_clipping(lm.parameters(), 1)
         lr_cosine_schedule(iter, **cfg.training.model_dump())
         optimizer.step()

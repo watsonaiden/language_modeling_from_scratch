@@ -17,6 +17,6 @@ def attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Ten
 
     # invert mask as we want to fill False values
     if mask is not None:
-        logits = logits.masked_fill(~mask, float("-inf"))
+        logits = logits.masked_fill(~mask[: logits.size(-1), : logits.size(-1)], float("-inf"))
 
     return einsum(softmax(logits, -1), V, "... seq_len key, ... key dv -> ... seq_len dv")

@@ -15,9 +15,11 @@ class TransformerBlock(nn.Module):
         self.attn = MultiheadAttention(d_model, num_heads, theta, max_seq_len)
         self.ln1 = RMSNorm(d_model)
 
+        self.token_positions = nn.Buffer(torch.arange(max_seq_len), persistent=False)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         # input should be [... sequence_length d_model]
-        x = x + self.attn(self.ln1(x), torch.arange(x.size(-2)))
+        x = x + self.attn(self.ln1(x), self.token_positions[: x.size(-2)])
 
         return x + self.ffn(self.ln2(x))

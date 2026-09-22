@@ -1,7 +1,7 @@
 import tomllib
 
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ModelParams(BaseModel):
@@ -20,6 +20,13 @@ class TrainingParams(BaseModel):
     annealing_steps: int
 
 
+class ValidationParams(BaseModel):
+    validation_path: str | None = None
+    num_batches: int = 1
+
+    validation_step_rate: int = 10
+
+
 class TrainingConfig(BaseModel):
     dataset_path: str
     vocab_size: int
@@ -31,6 +38,7 @@ class TrainingConfig(BaseModel):
 
     model: ModelParams
     training: TrainingParams
+    validation: ValidationParams = Field(default_factory=ValidationParams)
 
     test_mode: bool = False
 

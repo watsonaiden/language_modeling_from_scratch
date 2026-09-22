@@ -1,20 +1,32 @@
+from pathlib import Path
+from typing import Optional
+
 import torch
 
+from cs336_basics.modules.transformer_lm import TransformerLM
 
-def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out):
 
-    data = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "iteration": iteration}
+def save_checkpoint(model: TransformerLM, optimizer: torch.optim.Optimizer, iteration: int, out):
+    # operation fails if parent dir doesn't exist
+    parent_dir = Path(out).parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
 
-    torch.save(data, out)
+    state = {
+        "iter": iteration,
+        "lm_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+    }
+
+    torch.save(state, out)
 
 
 # returns iteration number
-def load_checkpoint(src, model: torch.nn.Module, optimizer: torch.optim.Optimizer) -> int:
+def load_checkpoint(src, model: Optional[TransformerLM], optimizer: Optional[torch.optim.Optimizer]) -> int:
+    state = torch.load(src)
 
-    data = torch.load(src)
+    if model:
+        model.load_state_dict(state["lm_state"])
+    if optimizer:
+        optimizer.load_state_dict(state["optimizer_state"])
 
-    model.load_state_dict(data["model"])
-
-    optimizer.load_state_dict(data["optimizer"])
-
-    return data["iteration"]
+    return state["iter"] if 'iter' in state else 0

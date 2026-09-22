@@ -34,7 +34,7 @@ class TrainingConfig(BaseModel):
 
     # other
     device: Literal["cpu", "cuda", "mps"] = "cpu"
-    checkpoint_dir: str | None = None
+    checkpoint_path: str | None = None
 
     model: ModelParams
     training: TrainingParams

@@ -1,8 +1,11 @@
 import torch
 import numpy as np
 import click
+
+from pathlib import Path
 from tqdm.auto import tqdm
 
+from cs336_basics.checkpoint import load_checkpoint, save_checkpoint
 from cs336_basics.modules import TransformerLM
 from cs336_basics.config import get_config, TrainingConfig
 from cs336_basics.data import get_batch
@@ -45,6 +48,14 @@ def train(config_path: str):
     lm.to(cfg.device)
 
     optimizer = AdamW(lm.parameters(), lr=cfg.training.lr_max)
+
+    checkpoint_path = Path(cfg.checkpoint_path) if cfg.checkpoint_path else None
+
+    step = 0
+    if checkpoint_path and checkpoint_path.exists():
+        step = load_checkpoint(checkpoint_path, lm, optimizer)
+        print(f"loaded state from {checkpoint_path} @ step {step}")
+
     data = np.memmap(cfg.dataset_path, dtype=np.uint16, mode="r")
 
     if cfg.validation.validation_path:
@@ -62,7 +73,7 @@ def train(config_path: str):
             data, batch_size=cfg.batch_size, context_length=cfg.model.context_length, device=cfg.device
         )
 
-    for iter in tqdm(range(learning_steps)):
+    for iter in tqdm(range(step, step + learning_steps), initial=step, total=step + learning_steps):
         # only regenerate if not in test mode
         if not cfg.test_mode:
             batch_input, batch_exp_output = get_batch(
@@ -89,9 +100,10 @@ def train(config_path: str):
         lr_cosine_schedule(iter, **cfg.training.model_dump())
         optimizer.step()
 
-    if cfg.checkpoint_dir:
-        print("writing to checkpoint", cfg.checkpoint_dir)
+    if cfg.checkpoint_path:
 
+        print("writing checkpoint", cfg.checkpoint_path)
+        save_checkpoint(lm, optimizer, step+learning_steps, cfg.checkpoint_path)
 
 if __name__ == "__main__":
     train()

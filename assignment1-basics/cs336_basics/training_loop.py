@@ -56,7 +56,7 @@ def train(config_path: str):
         step = load_checkpoint(checkpoint_path, lm, optimizer)
         print(f"loaded state from {checkpoint_path} @ step {step}")
 
-    data = np.memmap(cfg.dataset_path, dtype=np.uint16, mode="r")
+    data = np.load(cfg.dataset_path, mmap_mode='r')
 
     if cfg.validation.validation_path:
         data_validation = np.memmap(cfg.validation.validation_path, dtype=np.uint16, mode="r")
@@ -92,7 +92,7 @@ def train(config_path: str):
 
         # validation
         if iter % cfg.validation.validation_step_rate == 0:
-            if data_validation is not None:
+            if cfg.validation.validation_path is not None:
                 tqdm.write(f"iter: {iter}: validation loss {run_validation(data_validation, lm, cfg)}")
             tqdm.write(f"iter {iter}: training loss {loss}")
 

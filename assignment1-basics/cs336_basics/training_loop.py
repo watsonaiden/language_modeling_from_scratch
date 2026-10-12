@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 from cs336_basics.checkpoint import load_checkpoint, save_checkpoint
 from cs336_basics.modules import TransformerLM
 from cs336_basics.config import get_config, TrainingConfig
-from cs336_basics.data import get_batch
+from cs336_basics.data import TokenBasedBatcher, get_batch
 from cs336_basics.training import AdamW, cross_entropy_loss, lr_cosine_schedule, gradient_clipping
 
 
@@ -49,14 +49,13 @@ def train(config_path: str):
 
     optimizer = AdamW(lm.parameters(), lr=cfg.training.lr_max)
 
-    checkpoint_path = Path(cfg.checkpoint_path) if cfg.checkpoint_path else None
+    results_dir = Path(cfg.results_dir) if cfg.results_dir else None
 
     step = 0
-    if checkpoint_path and checkpoint_path.exists():
-        step = load_checkpoint(checkpoint_path, lm, optimizer)
-        print(f"loaded state from {checkpoint_path} @ step {step}")
+    if results_dir:
+        step = load_checkpoint(results_dir, lm, optimizer)
 
-    data = np.load(cfg.dataset_path, mmap_mode='r')
+    data = np.load(cfg.dataset_path, mmap_mode="r")
 
     if cfg.validation.validation_path:
         data_validation = np.memmap(cfg.validation.validation_path, dtype=np.uint16, mode="r")
@@ -72,6 +71,11 @@ def train(config_path: str):
         batch_input, batch_exp_output = get_batch(
             data, batch_size=cfg.batch_size, context_length=cfg.model.context_length, device=cfg.device
         )
+
+    # for logging purposes to compare training approaches
+    iterations = []
+    training_loss = []
+    validation_loss = []
 
     for iter in tqdm(range(step, step + learning_steps), initial=step, total=step + learning_steps):
         # only regenerate if not in test mode
@@ -92,18 +96,28 @@ def train(config_path: str):
 
         # validation
         if iter % cfg.validation.validation_step_rate == 0:
-            if cfg.validation.validation_path is not None:
-                tqdm.write(f"iter: {iter}: validation loss {run_validation(data_validation, lm, cfg)}")
+            iterations.append(iter)
+            training_loss.append(loss.item())
+            if cfg.validation.validation_path:
+                loss = run_validation(data_validation, lm, cfg).item()
+                validation_loss.append(loss)
+                tqdm.write(f"iter: {iter}: validation loss {loss}")
             tqdm.write(f"iter {iter}: training loss {loss}")
 
         gradient_clipping(lm.parameters(), 1)
         lr_cosine_schedule(iter, **cfg.training.model_dump())
         optimizer.step()
 
-    if cfg.checkpoint_path:
+    if cfg.results_dir:
+        print("writing checkpoint", cfg.results_dir)
+        save_checkpoint(
+            lm,
+            optimizer,
+            iterations,
+            {"training_loss": training_loss, "validation_loss": validation_loss},
+            cfg.results_dir,
+        )
 
-        print("writing checkpoint", cfg.checkpoint_path)
-        save_checkpoint(lm, optimizer, step+learning_steps, cfg.checkpoint_path)
 
 if __name__ == "__main__":
     train()
